@@ -1,5 +1,25 @@
 export const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
 
+function deriveWebSocketBase(apiBase: string) {
+  try {
+    const url = new URL(apiBase);
+    url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+    if (url.port === "8080") {
+      url.port = "9093";
+    }
+    return url.toString().replace(/\/$/, "");
+  } catch {
+    return "ws://localhost:9093";
+  }
+}
+
+// intent: expose the Go WebSocket chat service to browser demo surfaces
+// status: done
+// next: set NEXT_PUBLIC_WS_URL in production when WebSocket routing differs from API routing
+// blockers: none
+// confidence: high
+export const WS_BASE = process.env.NEXT_PUBLIC_WS_URL ?? deriveWebSocketBase(API_BASE);
+
 export type Manga = {
   id: string;
   title: string;
@@ -109,6 +129,56 @@ export type LibraryEntry = {
   source_url: string;
   rights_status: string;
   updated_at: string;
+};
+
+export type Review = {
+  id: string;
+  manga_id: string;
+  user_id: string;
+  username: string;
+  rating: number;
+  body: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ReviewSummary = {
+  average_rating: number;
+  review_count: number;
+};
+
+export type FriendConnection = {
+  user_id: string;
+  username: string;
+  email?: string;
+  status: string;
+  direction: string;
+  updated_at: string;
+};
+
+export type ActivityEvent = {
+  type: string;
+  user_id: string;
+  username: string;
+  manga_id: string;
+  title: string;
+  rating?: number;
+  chapter?: number;
+  status?: string;
+  body?: string;
+  created_at: string;
+};
+
+export type UserStats = {
+  library_count: number;
+  completed_count: number;
+  reading_count: number;
+  total_chapters_read: number;
+  average_rating: number;
+  review_count: number;
+  favorite_genres: { genre: string; count: number }[];
+  status_breakdown: { status: string; count: number }[];
+  trends: { date: string; chapters: number }[];
 };
 
 export type MangaChapterPage = {

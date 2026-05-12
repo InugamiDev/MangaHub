@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -133,7 +134,10 @@ func NewServerWithConfig(db *database.Store, jwt *auth.JWTManager, config Config
 	router.GET("/health", server.health)
 	router.POST("/auth/register", server.register)
 	router.POST("/auth/login", server.login)
+	router.POST("/auth/recovery/request", server.requestPasswordRecovery)
+	router.POST("/auth/recovery/reset", server.resetPassword)
 	router.GET("/manga", server.searchManga)
+	router.GET("/manga/:id/reviews", server.listReviews)
 	router.GET("/manga/:id", server.getManga)
 	router.GET("/manga/:id/chapters", server.listChapters)
 	router.GET("/manga/:id/chapters/:chapterId", server.getChapter)
@@ -141,6 +145,7 @@ func NewServerWithConfig(db *database.Store, jwt *auth.JWTManager, config Config
 	router.GET("/sources/anilist/search", server.searchAniList)
 	router.GET("/sources/anilist/:id", server.getAniList)
 	router.GET("/sources/mangadex/search", server.searchMangaDex)
+	router.GET("/sources/mangadex/cover/:mangaID/:fileName", server.proxyMangaDexCover)
 	router.GET("/sources/mangadex/:id", server.getMangaDex)
 
 	admin := router.Group("/admin")
@@ -163,20 +168,82 @@ func NewServerWithConfig(db *database.Store, jwt *auth.JWTManager, config Config
 	protected.GET("/library", server.getLibrary)
 	protected.DELETE("/library/:mangaID", server.deleteLibrary)
 	protected.PUT("/progress", server.updateProgress)
+	protected.GET("/stats", server.getUserStats)
+	protected.POST("/friends/request", server.requestFriend)
+	protected.POST("/friends/respond", server.respondFriend)
+	protected.GET("/friends", server.listFriends)
+	protected.GET("/activity", server.friendActivity)
+
+	// intent: keep community review writes authenticated while public readers can view summaries
+	// status: done
+	// next: add moderation roles if reviews need approval workflow
+	// blockers: none
+	// confidence: high
+	mangaProtected := router.Group("/manga")
+	mangaProtected.Use(jwt.Middleware())
+	mangaProtected.POST("/:id/reviews", server.submitReview)
 
 	return server
 }
 
 func cors(allowedOrigin string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		c.Header("Access-Control-Allow-Origin", allowedOrigin)
+		origin := c.GetHeader("Origin")
+		if corsOriginAllowed(allowedOrigin, origin) {
+			if strings.TrimSpace(allowedOrigin) == "*" && origin == "" {
+				c.Header("Access-Control-Allow-Origin", "*")
+			} else if origin != "" {
+				c.Header("Access-Control-Allow-Origin", origin)
+				c.Header("Vary", "Origin")
+			}
+		}
 		c.Header("Access-Control-Allow-Headers", "Authorization, Content-Type, X-Admin-Sync-Token")
 		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		c.Header("Access-Control-Max-Age", "86400")
 		if c.Request.Method == http.MethodOptions {
 			c.AbortWithStatus(http.StatusNoContent)
 			return
 		}
 		c.Next()
+	}
+}
+
+func corsOriginAllowed(allowedOrigin string, origin string) bool {
+	allowedOrigin = strings.TrimSpace(allowedOrigin)
+	origin = strings.TrimSpace(origin)
+	if origin == "" || allowedOrigin == "" || allowedOrigin == "*" {
+		return true
+	}
+	for _, allowed := range strings.Split(allowedOrigin, ",") {
+		allowed = strings.TrimSpace(allowed)
+		if allowed == "" {
+			continue
+		}
+		if allowed == "*" || allowed == origin || localLoopbackOriginMatch(allowed, origin) {
+			return true
+		}
+	}
+	return false
+}
+
+func localLoopbackOriginMatch(allowed string, origin string) bool {
+	allowedURL, allowedErr := url.Parse(allowed)
+	originURL, originErr := url.Parse(origin)
+	if allowedErr != nil || originErr != nil {
+		return false
+	}
+	if allowedURL.Scheme != originURL.Scheme || allowedURL.Port() != originURL.Port() {
+		return false
+	}
+	return isLoopbackHost(allowedURL.Hostname()) && isLoopbackHost(originURL.Hostname())
+}
+
+func isLoopbackHost(host string) bool {
+	switch strings.ToLower(strings.Trim(host, "[]")) {
+	case "localhost", "127.0.0.1", "::1":
+		return true
+	default:
+		return false
 	}
 }
 
@@ -332,21 +399,31 @@ func (s *Server) searchManga(c *gin.Context) {
 	genre := strings.TrimSpace(strings.ToLower(c.Query("genre")))
 	status := normalizeCatalogStatus(c.Query("status"))
 	limit := clampInt(c.DefaultQuery("limit", "24"), 1, 500)
-	cacheKey := strings.Join([]string{searchTerm, genre, status, strconv.Itoa(limit)}, "\x00")
+	offset := clampInt(c.DefaultQuery("offset", "0"), 0, 10000)
+	year := clampInt(c.DefaultQuery("year", "0"), 0, 9999)
+	minRating := clampFloat(c.DefaultQuery("min_rating", "0"), 0, 5)
+	sortMode := normalizeMangaSort(c.Query("sort"))
+	cacheKey := strings.Join([]string{searchTerm, genre, status, strconv.Itoa(limit), strconv.Itoa(offset), strconv.Itoa(year), fmt.Sprintf("%.2f", minRating), sortMode}, "\x00")
 	if cached, ok := s.getCatalogCache(cacheKey); ok {
 		c.JSON(http.StatusOK, cached)
 		return
 	}
 
 	query := "%" + searchTerm + "%"
+	orderBy := mangaSearchOrderBy(sortMode)
 
 	rows, err := s.DB.Query(`
-SELECT id, title, author, genres, status, total_chapters, description, cover_url, source_provider, source_url, rights_status
-FROM manga
-WHERE (lower(title) LIKE ? OR lower(author) LIKE ? OR lower(description) LIKE ?)
-AND (? = '' OR lower(status) = ?)
-ORDER BY title ASC
-LIMIT ?`, query, query, query, status, status, limit)
+SELECT m.id, m.title, m.author, m.genres, m.status, m.total_chapters, m.description, m.cover_url, m.source_provider, m.source_url, m.rights_status, m.publication_year,
+       COALESCE(AVG(r.rating), 0), COUNT(r.id)
+FROM manga m
+LEFT JOIN reviews r ON r.manga_id = m.id
+WHERE (lower(m.title) LIKE ? OR lower(m.author) LIKE ? OR lower(m.description) LIKE ?)
+AND (? = '' OR lower(m.status) = ?)
+AND (? = 0 OR m.publication_year = ?)
+GROUP BY m.id, m.title, m.author, m.genres, m.status, m.total_chapters, m.description, m.cover_url, m.source_provider, m.source_url, m.rights_status, m.publication_year
+HAVING (? = 0 OR COALESCE(AVG(r.rating), 0) >= ?)
+ORDER BY `+orderBy+`
+LIMIT ? OFFSET ?`, query, query, query, status, status, year, year, minRating, minRating, limit, offset)
 	if err != nil {
 		log.Printf("search manga query failed: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "search failed"})
@@ -356,14 +433,14 @@ LIMIT ?`, query, query, query, status, status, limit)
 
 	results := make([]models.Manga, 0)
 	for rows.Next() {
-		manga, err := scanManga(rows)
+		manga, err := scanMangaWithStats(rows)
 		if err != nil {
 			log.Printf("search manga scan failed: %v", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid manga record"})
 			return
 		}
 		if genre == "" || hasGenre(manga.Genres, genre) {
-			manga.CoverURL = models.SanitizeCoverURL(manga.CoverURL)
+			manga = s.repairCatalogSourceCover(manga)
 			results = append(results, manga)
 		}
 	}
@@ -406,9 +483,48 @@ func (s *Server) InvalidateCatalogCache() {
 	s.invalidateCatalogCache()
 }
 
+func (s *Server) repairCatalogSourceCover(manga models.Manga) models.Manga {
+	manga.CoverURL = models.SanitizeCoverURL(manga.CoverURL)
+	manga.CoverLargeURL = models.SanitizeCoverURL(manga.CoverLargeURL)
+
+	mangaDexID := extractMangaDexMangaID(manga.SourceURL)
+	if mangaDexID == "" {
+		return manga
+	}
+
+	if normalizedCover := normalizeMangaDexCoverURLForID(manga.CoverURL, mangaDexID); normalizedCover != "" {
+		if normalizedCover != manga.CoverURL {
+			manga.CoverURL = normalizedCover
+			s.persistMangaDexCoverRepair(manga)
+		}
+		return manga
+	}
+
+	enriched, err := cachedMangaDexManga(mangaDexID)
+	if err != nil {
+		return manga
+	}
+	repaired := mergeMangaDexSource(manga, enriched)
+	if !isMangaDexCoverURLForID(repaired.CoverURL, mangaDexID) {
+		return manga
+	}
+
+	s.persistMangaDexCoverRepair(repaired)
+	return repaired
+}
+
+func (s *Server) persistMangaDexCoverRepair(manga models.Manga) {
+	if _, err := s.DB.Exec(`
+UPDATE manga
+SET cover_url = ?, source_provider = ?, rights_status = ?
+WHERE id = ?`, manga.CoverURL, manga.SourceProvider, manga.RightsStatus, manga.ID); err != nil {
+		log.Printf("repair MangaDex cover for %q failed: %v", manga.ID, err)
+	}
+}
+
 func (s *Server) getManga(c *gin.Context) {
 	row := s.DB.QueryRow(`
-SELECT id, title, author, genres, status, total_chapters, description, cover_url, source_provider, source_url, rights_status
+SELECT id, title, author, genres, status, total_chapters, description, cover_url, source_provider, source_url, rights_status, publication_year
 FROM manga WHERE id = ?`, c.Param("id"))
 	manga, err := scanManga(row)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -420,6 +536,7 @@ FROM manga WHERE id = ?`, c.Param("id"))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load manga"})
 		return
 	}
+	s.attachReviewSummary(&manga)
 	c.JSON(http.StatusOK, enrichMangaFromSource(manga))
 }
 
@@ -534,7 +651,7 @@ func (s *Server) getAniList(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "valid AniList manga id is required"})
 		return
 	}
-	result, err := fetchAniListMangaByID(id)
+	result, err := cachedAniListManga(id)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": "legal source lookup failed"})
 		return
@@ -1362,6 +1479,7 @@ func mapAniListMedia(media aniListMedia) models.Manga {
 		SourceProvider:  "AniList GraphQL",
 		SourceURL:       media.SiteURL,
 		RightsStatus:    "metadata-only",
+		PublicationYear: media.StartDate.Year,
 		CoverLargeURL:   coverURL,
 		BannerURL:       models.SanitizeCoverURL(media.BannerImage),
 		StartDate:       formatAniListDate(media.StartDate),
@@ -1781,7 +1899,7 @@ type rowScanner interface {
 func scanManga(row rowScanner) (models.Manga, error) {
 	var manga models.Manga
 	var genresJSON string
-	err := row.Scan(&manga.ID, &manga.Title, &manga.Author, &genresJSON, &manga.Status, &manga.TotalChapters, &manga.Description, &manga.CoverURL, &manga.SourceProvider, &manga.SourceURL, &manga.RightsStatus)
+	err := row.Scan(&manga.ID, &manga.Title, &manga.Author, &genresJSON, &manga.Status, &manga.TotalChapters, &manga.Description, &manga.CoverURL, &manga.SourceProvider, &manga.SourceURL, &manga.RightsStatus, &manga.PublicationYear)
 	if err != nil {
 		return manga, err
 	}
@@ -1790,6 +1908,55 @@ func scanManga(row rowScanner) (models.Manga, error) {
 	}
 	manga.CoverURL = models.SanitizeCoverURL(manga.CoverURL)
 	return manga, nil
+}
+
+func scanMangaWithStats(row rowScanner) (models.Manga, error) {
+	manga, err := scanMangaPrefix(row)
+	if err != nil {
+		return manga, err
+	}
+	return manga, nil
+}
+
+func scanMangaPrefix(row rowScanner) (models.Manga, error) {
+	var manga models.Manga
+	var genresJSON string
+	err := row.Scan(
+		&manga.ID,
+		&manga.Title,
+		&manga.Author,
+		&genresJSON,
+		&manga.Status,
+		&manga.TotalChapters,
+		&manga.Description,
+		&manga.CoverURL,
+		&manga.SourceProvider,
+		&manga.SourceURL,
+		&manga.RightsStatus,
+		&manga.PublicationYear,
+		&manga.AverageRating,
+		&manga.ReviewCount,
+	)
+	if err != nil {
+		return manga, err
+	}
+	if err := json.Unmarshal([]byte(genresJSON), &manga.Genres); err != nil {
+		return manga, err
+	}
+	manga.CoverURL = models.SanitizeCoverURL(manga.CoverURL)
+	return manga, nil
+}
+
+func (s *Server) attachReviewSummary(manga *models.Manga) {
+	var average sql.NullFloat64
+	var count int
+	if err := s.DB.QueryRow(`SELECT AVG(rating), COUNT(*) FROM reviews WHERE manga_id = ?`, manga.ID).Scan(&average, &count); err != nil {
+		return
+	}
+	if average.Valid {
+		manga.AverageRating = average.Float64
+	}
+	manga.ReviewCount = count
 }
 
 func validateRegistration(req registerRequest) error {
@@ -1844,4 +2011,42 @@ func clampInt(raw string, minValue, maxValue int) int {
 		return maxValue
 	}
 	return value
+}
+
+func clampFloat(raw string, minValue, maxValue float64) float64 {
+	value, err := strconv.ParseFloat(raw, 64)
+	if err != nil {
+		return minValue
+	}
+	if value < minValue {
+		return minValue
+	}
+	if value > maxValue {
+		return maxValue
+	}
+	return value
+}
+
+func normalizeMangaSort(sort string) string {
+	switch strings.ToLower(strings.TrimSpace(sort)) {
+	case "rating", "reviews", "popular", "popularity", "chapters", "year", "newest", "latest":
+		return strings.ToLower(strings.TrimSpace(sort))
+	default:
+		return "title"
+	}
+}
+
+func mangaSearchOrderBy(sortMode string) string {
+	switch sortMode {
+	case "rating", "reviews":
+		return "COALESCE(AVG(r.rating), 0) DESC, COUNT(r.id) DESC, lower(m.title) ASC"
+	case "popular", "popularity":
+		return "COUNT(r.id) DESC, COALESCE(AVG(r.rating), 0) DESC, lower(m.title) ASC"
+	case "chapters":
+		return "m.total_chapters DESC, lower(m.title) ASC"
+	case "year", "newest", "latest":
+		return "m.publication_year DESC, lower(m.title) ASC"
+	default:
+		return "lower(m.title) ASC"
+	}
 }

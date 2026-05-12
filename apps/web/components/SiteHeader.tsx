@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Bookmark, Crown, List, LogIn, Menu, MessageCircle, Search, X } from "lucide-react";
+import { Bookmark, Crown, List, LogIn, Menu, MessageCircle, Search, Users, X } from "lucide-react";
 
 const navItems = [
   { href: "/#updates", label: "Updates", icon: List },
@@ -11,6 +11,7 @@ const navItems = [
   { href: "/genres", label: "Genres", icon: List },
   { href: "/popular", label: "Ranking", icon: Crown },
   { href: "/bookmarks", label: "Favorite", icon: Bookmark },
+  { href: "/friends", label: "Friends", icon: Users },
   { href: "/chat", label: "Chat", icon: MessageCircle },
   { href: "/login", label: "Login", icon: LogIn },
 ];

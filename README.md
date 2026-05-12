@@ -33,7 +33,7 @@ Seeded manga records are metadata-only. MangaHub does not import chapter pages f
 
 The static seed preserves the status values retrieved from AniList metadata instead of manually relabeling completed titles to improve the visible mix. Use the backend AniList or MangaDex sync/admin flows to add current ongoing or hiatus titles when the demo catalog needs broader status coverage.
 
-MangaDex cover art is resolved from the `cover_art` relationship. The API returns a cover file name, and MangaHub builds the CDN URL as `https://uploads.mangadex.org/covers/{mangaId}/{fileName}`. Chapter pages are separate from cover metadata and are only served from app-owned storage after an authorized import/upload.
+MangaDex cover art is resolved from the `cover_art` relationship. The API returns a cover file name, and MangaHub builds the thumbnail CDN URL as `https://uploads.mangadex.org/covers/{mangaId}/{fileName}.512.jpg`. Chapter pages are separate from cover metadata and are only served from app-owned storage after an authorized import/upload.
 
 ## Quick Start
 

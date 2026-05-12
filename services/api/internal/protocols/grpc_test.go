@@ -104,3 +104,16 @@ func TestGRPCServiceUsesGeneratedProtobufClient(t *testing.T) {
 		t.Fatalf("progress response = %#v", progress.GetProgress())
 	}
 }
+
+func TestWebSocketOriginAllowsLocalhostLoopbackAlias(t *testing.T) {
+	server := NewChatServer(":0", auth.NewJWTManager("test-secret"), "http://localhost:3000")
+	if !server.originAllowed("http://127.0.0.1:3000") {
+		t.Fatal("expected 127.0.0.1 dev origin to match localhost allowlist")
+	}
+	if server.originAllowed("http://127.0.0.1:3001") {
+		t.Fatal("expected different local port to remain blocked")
+	}
+	if server.originAllowed("https://example.com") {
+		t.Fatal("expected unrelated origin to remain blocked")
+	}
+}

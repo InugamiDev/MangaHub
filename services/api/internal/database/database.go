@@ -125,7 +125,8 @@ CREATE TABLE IF NOT EXISTS manga (
 	cover_url TEXT NOT NULL,
 	source_provider TEXT NOT NULL DEFAULT 'MangaHub seed',
 	source_url TEXT NOT NULL DEFAULT '',
-	rights_status TEXT NOT NULL DEFAULT 'metadata-only'
+	rights_status TEXT NOT NULL DEFAULT 'metadata-only',
+	publication_year INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS chapters (
@@ -151,10 +152,46 @@ CREATE TABLE IF NOT EXISTS user_progress (
 	FOREIGN KEY (manga_id) REFERENCES manga(id) ON DELETE CASCADE
 );
 
-CREATE INDEX IF NOT EXISTS idx_manga_title ON manga(title);
-CREATE INDEX IF NOT EXISTS idx_manga_author ON manga(author);
-CREATE INDEX IF NOT EXISTS idx_chapters_manga ON chapters(manga_id);
-CREATE INDEX IF NOT EXISTS idx_progress_user ON user_progress(user_id);
+-- intent: persist bonus/demo use cases without adding an external service dependency
+-- status: done
+-- next: replace password reset token echo with email delivery before production use
+-- blockers: none
+-- confidence: high
+CREATE TABLE IF NOT EXISTS reviews (
+	id TEXT PRIMARY KEY,
+	manga_id TEXT NOT NULL,
+	user_id TEXT NOT NULL,
+	rating INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 5),
+	body TEXT NOT NULL,
+	created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+	updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+	UNIQUE(manga_id, user_id),
+	FOREIGN KEY (manga_id) REFERENCES manga(id) ON DELETE CASCADE,
+	FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS friendships (
+	requester_id TEXT NOT NULL,
+	addressee_id TEXT NOT NULL,
+	status TEXT NOT NULL CHECK (status IN ('pending', 'accepted', 'declined')),
+	created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+	updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+	PRIMARY KEY (requester_id, addressee_id),
+	FOREIGN KEY (requester_id) REFERENCES users(id) ON DELETE CASCADE,
+	FOREIGN KEY (addressee_id) REFERENCES users(id) ON DELETE CASCADE,
+	CHECK (requester_id <> addressee_id)
+);
+
+CREATE TABLE IF NOT EXISTS password_reset_tokens (
+	id TEXT PRIMARY KEY,
+	user_id TEXT NOT NULL,
+	token TEXT UNIQUE NOT NULL,
+	expires_at TIMESTAMP NOT NULL,
+	used_at TIMESTAMP,
+	created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+	FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
 `)
 	if err != nil {
 		return err
@@ -168,7 +205,24 @@ CREATE INDEX IF NOT EXISTS idx_progress_user ON user_progress(user_id);
 	if err := ensureColumn(store, "manga", "rights_status", "ALTER TABLE manga ADD COLUMN rights_status TEXT NOT NULL DEFAULT 'metadata-only'"); err != nil {
 		return err
 	}
-	return ensureColumn(store, "users", "role", "ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'reader'")
+	if err := ensureColumn(store, "manga", "publication_year", "ALTER TABLE manga ADD COLUMN publication_year INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
+	if err := ensureColumn(store, "users", "role", "ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'reader'"); err != nil {
+		return err
+	}
+	_, err = store.Exec(`
+CREATE INDEX IF NOT EXISTS idx_manga_title ON manga(title);
+CREATE INDEX IF NOT EXISTS idx_manga_author ON manga(author);
+CREATE INDEX IF NOT EXISTS idx_manga_publication_year ON manga(publication_year);
+CREATE INDEX IF NOT EXISTS idx_chapters_manga ON chapters(manga_id);
+CREATE INDEX IF NOT EXISTS idx_progress_user ON user_progress(user_id);
+CREATE INDEX IF NOT EXISTS idx_reviews_manga ON reviews(manga_id);
+CREATE INDEX IF NOT EXISTS idx_reviews_user ON reviews(user_id);
+CREATE INDEX IF NOT EXISTS idx_friendships_addressee ON friendships(addressee_id, status);
+CREATE INDEX IF NOT EXISTS idx_password_reset_token ON password_reset_tokens(token);
+`)
+	return err
 }
 
 func SeedManga(store *Store, seedPath string) error {
@@ -198,8 +252,8 @@ func upsertManga(store *Store, entries []models.Manga, pruneStaleSeed bool) erro
 	defer tx.Rollback()
 
 	stmt, err := tx.Prepare(store.Rebind(`
-INSERT INTO manga (id, title, author, genres, status, total_chapters, description, cover_url, source_provider, source_url, rights_status)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO manga (id, title, author, genres, status, total_chapters, description, cover_url, source_provider, source_url, rights_status, publication_year)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(id) DO UPDATE SET
 	title = excluded.title,
 	author = excluded.author,
@@ -210,7 +264,8 @@ ON CONFLICT(id) DO UPDATE SET
 	cover_url = excluded.cover_url,
 	source_provider = excluded.source_provider,
 	source_url = excluded.source_url,
-	rights_status = excluded.rights_status`))
+	rights_status = excluded.rights_status,
+	publication_year = excluded.publication_year`))
 	if err != nil {
 		return err
 	}
@@ -228,7 +283,7 @@ ON CONFLICT(id) DO UPDATE SET
 		if err != nil {
 			return err
 		}
-		if _, err := stmt.Exec(manga.ID, manga.Title, manga.Author, string(genres), manga.Status, manga.TotalChapters, manga.Description, manga.CoverURL, manga.SourceProvider, manga.SourceURL, manga.RightsStatus); err != nil {
+		if _, err := stmt.Exec(manga.ID, manga.Title, manga.Author, string(genres), manga.Status, manga.TotalChapters, manga.Description, manga.CoverURL, manga.SourceProvider, manga.SourceURL, manga.RightsStatus, manga.PublicationYear); err != nil {
 			return err
 		}
 	}

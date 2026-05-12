@@ -319,8 +319,9 @@ function uniqueManga(items: Array<CatalogManga | undefined>) {
 }
 
 async function loadArtworkOverrides(items: CatalogManga[]) {
+  const targets = items.filter((manga) => !validImageURL(manga.coverUrl)).slice(0, 6);
   const entries = await Promise.all(
-    items.map(async (manga) => {
+    targets.map(async (manga) => {
       const source = await loadSourceManga(manga);
       if (!source || !validImageURL(source.coverUrl)) return [manga.slug, manga] as const;
       return [

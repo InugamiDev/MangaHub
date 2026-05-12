@@ -46,24 +46,24 @@
 
 ## Bonus Features
 
-- UC-017 Advanced Manga Search: filter by genres, status, rating, year, and sort criteria.
-- UC-018 Submit Manga Review: completed reader writes a review and rating.
-- UC-019 View Manga Reviews: readers view community reviews and average rating.
-- UC-020 Add Friend: user sends request; target accepts; system creates relationship.
-- UC-021 View Friend Activity: user sees recent friend completions, reviews, and ratings.
-- UC-022 Generate Reading Statistics: system calculates total chapters, favorite genres, patterns, and trends.
-- UC-023 View Personal Statistics: user views dashboards and time period breakdowns.
-- UC-024 Cache Popular Manga Data: system stores frequently accessed manga data in Redis.
+- UC-017 Advanced Manga Search: filter by genres, status, community rating, publication year, offset, limit, and sort criteria through `GET /manga`.
+- UC-018 Submit Manga Review: completed reader writes or updates a review and 1-5 rating through `POST /manga/:id/reviews`.
+- UC-019 View Manga Reviews: readers view community reviews, average rating, and review count through `GET /manga/:id/reviews` and the manga detail page.
+- UC-020 Add Friend: user sends request; target accepts or declines; system creates an accepted relationship through `/users/friends/*`.
+- UC-021 View Friend Activity: user sees recent accepted-friend completions, reviews, and ratings through `GET /users/activity` and `/friends`.
+- UC-022 Generate Reading Statistics: system calculates total chapters, favorite genres, status breakdowns, review averages, and trend points through `GET /users/stats`.
+- UC-023 View Personal Statistics: user views profile stats and social activity dashboards in the web app.
+- UC-024 Cache Popular Manga Data: system stores frequently accessed manga search responses in the in-process catalog cache for the local demo.
 
 ## Error Handling And Recovery
 
-- UC-025 Handle Database Unavailability: return cached reads when possible, queue writes when feasible, show user-friendly errors, and attempt reconnect.
-- UC-026 TCP Server Recovery: restart server, support client reconnect, and queue progress updates during downtime.
-- UC-027 WebSocket Connection Recovery: client reconnects, history is preserved, and users are notified of status.
+- UC-025 Handle Database Unavailability: health reports degraded DB state, cached manga reads are reused while valid, and account recovery endpoints return user-friendly errors.
+- UC-026 TCP Server Recovery: restart server, support client reconnect, and queue up to 20 progress updates per user during downtime.
+- UC-027 WebSocket Connection Recovery: clients can reconnect, and the server preserves the last 30 messages per room for replay on join.
 
 ## Performance And Security
 
-- UC-028 Support Concurrent Users: handle 50-100 simultaneous users with stable API, DB, TCP, and WebSocket behavior.
-- UC-029 Efficient Data Retrieval: paginate large queries, use indexes, and manage database resources.
+- UC-028 Support Concurrent Users: handle concurrent API, TCP, and WebSocket users with goroutines, bounded DB pool settings, and targeted concurrency tests.
+- UC-029 Efficient Data Retrieval: paginate large HTTP catalog queries with `limit`/`offset`, use indexes, cache frequent searches, and manage database resources.
 - UC-030 Validate JWT Tokens: reject invalid and expired tokens, validate claims, and prevent unauthorized access.
 - UC-031 Input Validation: block SQL injection, sanitize XSS attempts, enforce length limits, and reject invalid formats.

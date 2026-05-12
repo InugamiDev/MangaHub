@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Bookmark, Clock3, LogOut } from "lucide-react";
-import { apiFetch, type LibraryEntry } from "@/lib/api";
+import { BarChart3, Bookmark, Clock3, LogOut, Star } from "lucide-react";
+import { apiFetch, type LibraryEntry, type UserStats } from "@/lib/api";
 
 type StoredUser = {
   username?: string;
@@ -14,6 +14,7 @@ type StoredUser = {
 export function ProfileSummary() {
   const [user, setUser] = useState<StoredUser | null>(null);
   const [entries, setEntries] = useState<LibraryEntry[]>([]);
+  const [stats, setStats] = useState<UserStats | null>(null);
 
   useEffect(() => {
     const storedUser = localStorage.getItem("mangahub_user");
@@ -31,6 +32,9 @@ export function ProfileSummary() {
       apiFetch<{ entries: LibraryEntry[] }>("/users/library", { token })
         .then((payload) => setEntries(payload.entries))
         .catch(() => setEntries([]));
+      apiFetch<{ stats: UserStats }>("/users/stats", { token })
+        .then((payload) => setStats(payload.stats))
+        .catch(() => setStats(null));
     }
   }, []);
 
@@ -45,6 +49,8 @@ export function ProfileSummary() {
       </div>
       <Link href="/bookmarks"><Bookmark size={18} /> {entries.length} bookmarks</Link>
       <Link href="/history"><Clock3 size={18} /> {entries.length} history items</Link>
+      <Link href="/friends"><BarChart3 size={18} /> {stats?.total_chapters_read ?? 0} chapters read</Link>
+      <span><Star size={18} /> {stats?.review_count ?? 0} reviews · {(stats?.average_rating ?? 0).toFixed(1)} avg</span>
       <button
         type="button"
         onClick={() => {
@@ -52,6 +58,7 @@ export function ProfileSummary() {
           localStorage.removeItem("mangahub_user");
           setUser(null);
           setEntries([]);
+          setStats(null);
         }}
       >
         <LogOut size={18} /> Logout

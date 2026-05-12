@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -206,11 +207,33 @@ func (s *ChatServer) originAllowed(origin string) bool {
 		return true
 	}
 	for _, allowed := range strings.Split(s.AllowedOrigin, ",") {
-		if strings.TrimSpace(allowed) == origin {
+		allowed = strings.TrimSpace(allowed)
+		if allowed == origin || websocketLoopbackOriginMatch(allowed, origin) {
 			return true
 		}
 	}
 	return false
+}
+
+func websocketLoopbackOriginMatch(allowed string, origin string) bool {
+	allowedURL, allowedErr := url.Parse(allowed)
+	originURL, originErr := url.Parse(origin)
+	if allowedErr != nil || originErr != nil {
+		return false
+	}
+	if allowedURL.Scheme != originURL.Scheme || allowedURL.Port() != originURL.Port() {
+		return false
+	}
+	return websocketLoopbackHost(allowedURL.Hostname()) && websocketLoopbackHost(originURL.Hostname())
+}
+
+func websocketLoopbackHost(host string) bool {
+	switch strings.ToLower(strings.Trim(host, "[]")) {
+	case "localhost", "127.0.0.1", "::1":
+		return true
+	default:
+		return false
+	}
 }
 
 func (h *ChatHub) register(client *chatClient) {

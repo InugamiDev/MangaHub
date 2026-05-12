@@ -1,14 +1,9 @@
 import { notFound } from "next/navigation";
 import { AdminChapterList } from "@/components/admin/AdminChapterList";
 import { PageTitle } from "@/components/catalog/PageTitle";
-import { loadCatalog, loadManga } from "@/lib/catalogData";
+import { loadManga } from "@/lib/catalogData";
 
 export const dynamic = "force-dynamic";
-
-export async function generateStaticParams() {
-  const catalog = await loadCatalog();
-  return catalog.map((manga) => ({ id: manga.slug }));
-}
 
 export default async function AdminChaptersPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;

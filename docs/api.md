@@ -169,6 +169,31 @@ Success:
 
 Returns the authenticated user profile, including `role`. Requires a user JWT.
 
+### `POST /auth/recovery/request`
+
+Starts the local demo password recovery flow.
+
+Request:
+
+```json
+{
+  "email": "demo@example.com"
+}
+```
+
+Response returns a one-hour `token` in local/demo mode so the flow can be verified without email infrastructure. Production deployments should send the token by email instead of displaying it.
+
+### `POST /auth/recovery/reset`
+
+Consumes a recovery token and sets a new password.
+
+```json
+{
+  "token": "rst_...",
+  "new_password": "Password456"
+}
+```
+
 ## Manga Catalog
 
 ### `GET /manga`
@@ -183,6 +208,10 @@ Query parameters:
 | `genre` | No | Exact genre filter after result load. |
 | `status` | No | Exact status filter, e.g. `ongoing`, `completed`, `hiatus`. |
 | `limit` | No | Integer 1-500 for HTTP catalog search. Defaults to 24. gRPC search caps at 100. |
+| `offset` | No | Integer 0-10000 for paginated HTTP catalog search. |
+| `min_rating` | No | Community review average threshold from `0` to `5`. |
+| `year` | No | Exact `publication_year` filter for imported/admin records that include year metadata. |
+| `sort` | No | `title`, `rating`, `popular`, `chapters`, or `year`. |
 
 Example:
 
@@ -206,7 +235,10 @@ Response:
       "cover_url": "https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/...",
       "source_provider": "AniList metadata",
       "source_url": "https://anilist.co/manga/30013",
-      "rights_status": "metadata-only"
+      "rights_status": "metadata-only",
+      "publication_year": 1997,
+      "average_rating": 4.8,
+      "review_count": 12
     }
   ],
   "count": 1
@@ -334,6 +366,53 @@ Response:
 
 The TCP server keeps up to 20 pending progress updates per user and replays them after that user's next authenticated TCP connection. This implements the UC-006/UC-026 local-update-plus-queued-broadcast behavior at the single-process service level.
 
+### `GET /users/stats`
+
+Returns personal reading statistics for UC-022 and UC-023: library count, completed/reading counts, total chapters read, average review rating, favorite genres, status breakdown, and per-day trend points.
+
+### `POST /manga/:id/reviews`
+
+Submits or updates the authenticated user's review for a completed manga. Implements UC-018.
+
+Rules:
+
+- User must have the manga in library with status `completed`, or have progress at/above total chapters.
+- `rating` must be 1-5.
+- `body` must be 5-2000 characters.
+
+### `GET /manga/:id/reviews`
+
+Returns public community reviews plus `average_rating` and `review_count`. Implements UC-019.
+
+### `POST /users/friends/request`
+
+Sends a friend request by `user_id`, `username`, or `email`. Implements the request half of UC-020.
+
+```json
+{
+  "username": "friend_reader"
+}
+```
+
+### `POST /users/friends/respond`
+
+Accepts or declines an inbound friend request. Implements the approval half of UC-020.
+
+```json
+{
+  "requester_id": "usr_...",
+  "status": "accepted"
+}
+```
+
+### `GET /users/friends`
+
+Lists accepted friends plus inbound and outbound pending requests.
+
+### `GET /users/activity`
+
+Returns recent accepted-friend completions and reviews. Implements UC-021.
+
 ## Legal Metadata Sources
 
 ### `GET /sources`
@@ -453,7 +532,8 @@ Request:
   "cover_url": "https://example.com/cover.jpg",
   "source_provider": "Admin",
   "source_url": "",
-  "rights_status": "licensed-upload"
+  "rights_status": "licensed-upload",
+  "publication_year": 2016
 }
 ```
 

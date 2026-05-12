@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { BarChart3, BookOpen, CalendarDays, ExternalLink, Heart, Play, ShieldCheck, Sparkles, Star, Users } from "lucide-react";
 import { MangaCard } from "@/components/catalog/MangaCard";
+import { ReviewPanel } from "@/components/community/ReviewPanel";
 import { RealMangaCover } from "@/components/catalog/RealMangaCover";
 import { BookmarkButton } from "@/components/user/BookmarkButton";
 import { genreSlug, loadCatalog, loadManga, relatedManga, validImageURL } from "@/lib/catalogData";
@@ -187,6 +188,8 @@ export default async function MangaDetailPage({ params }: { params: Promise<{ sl
             )}
           </div>
         </section>
+
+        <ReviewPanel mangaId={manga.slug} />
 
         <section className="content-panel">
           <h2>Related manga</h2>

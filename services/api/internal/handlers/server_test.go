@@ -183,6 +183,92 @@ func TestAdminMangaAndChapterCRUD(t *testing.T) {
 	}
 }
 
+func TestBonusUseCasesReviewFriendsStatsAndRecovery(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	db, err := database.Open(filepath.Join(t.TempDir(), "mangahub.db"))
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	defer db.Close()
+	if err := database.Migrate(db); err != nil {
+		t.Fatalf("migrate database: %v", err)
+	}
+	if err := database.UpsertManga(db, []models.Manga{
+		{
+			ID:              "bonus-series",
+			Title:           "Bonus Series",
+			Author:          "Demo Author",
+			Genres:          []string{"Drama", "Josei"},
+			Status:          "completed",
+			TotalChapters:   10,
+			Description:     "A series used for review, stats, and friend activity demos.",
+			CoverURL:        "https://cdn.example.com/bonus.jpg",
+			SourceProvider:  "MangaHub test",
+			RightsStatus:    "metadata-only",
+			PublicationYear: 2020,
+		},
+	}); err != nil {
+		t.Fatalf("upsert manga: %v", err)
+	}
+	server := NewServer(db, auth.NewJWTManager("test-secret"))
+
+	aliceID, aliceToken := registerAndLogin(t, server.Router, "alice_reader", "alice@example.com")
+	bobID, bobToken := registerAndLogin(t, server.Router, "bob_reader", "bob@example.com")
+
+	add := perform(server.Router, http.MethodPost, "/users/library", `{"manga_id":"bonus-series","status":"completed","current_chapter":10}`, aliceToken)
+	if add.Code != http.StatusOK {
+		t.Fatalf("add completed library entry failed: %d %s", add.Code, add.Body.String())
+	}
+	review := perform(server.Router, http.MethodPost, "/manga/bonus-series/reviews", `{"rating":5,"body":"Excellent finale and strong pacing."}`, aliceToken)
+	if review.Code != http.StatusOK || !strings.Contains(review.Body.String(), `"review_count":1`) {
+		t.Fatalf("submit review failed: %d %s", review.Code, review.Body.String())
+	}
+	listReviews := perform(server.Router, http.MethodGet, "/manga/bonus-series/reviews", "", "")
+	if listReviews.Code != http.StatusOK || !strings.Contains(listReviews.Body.String(), "alice_reader") {
+		t.Fatalf("list reviews failed: %d %s", listReviews.Code, listReviews.Body.String())
+	}
+	advancedSearch := perform(server.Router, http.MethodGet, "/manga?min_rating=4&year=2020&sort=rating", "", "")
+	if advancedSearch.Code != http.StatusOK || !strings.Contains(advancedSearch.Body.String(), "Bonus Series") || !strings.Contains(advancedSearch.Body.String(), `"average_rating":5`) {
+		t.Fatalf("advanced search failed: %d %s", advancedSearch.Code, advancedSearch.Body.String())
+	}
+
+	friendRequest := perform(server.Router, http.MethodPost, "/users/friends/request", `{"username":"alice_reader"}`, bobToken)
+	if friendRequest.Code != http.StatusOK || !strings.Contains(friendRequest.Body.String(), "pending") {
+		t.Fatalf("friend request failed: %d %s", friendRequest.Code, friendRequest.Body.String())
+	}
+	friendAccept := perform(server.Router, http.MethodPost, "/users/friends/respond", `{"requester_id":"`+bobID+`","status":"accepted"}`, aliceToken)
+	if friendAccept.Code != http.StatusOK || !strings.Contains(friendAccept.Body.String(), "accepted") {
+		t.Fatalf("friend accept failed: %d %s", friendAccept.Code, friendAccept.Body.String())
+	}
+	activity := perform(server.Router, http.MethodGet, "/users/activity", "", bobToken)
+	if activity.Code != http.StatusOK || !strings.Contains(activity.Body.String(), "Excellent finale") || !strings.Contains(activity.Body.String(), aliceID) {
+		t.Fatalf("friend activity failed: %d %s", activity.Code, activity.Body.String())
+	}
+	stats := perform(server.Router, http.MethodGet, "/users/stats", "", aliceToken)
+	if stats.Code != http.StatusOK || !strings.Contains(stats.Body.String(), `"total_chapters_read":10`) || !strings.Contains(stats.Body.String(), `"review_count":1`) {
+		t.Fatalf("stats failed: %d %s", stats.Code, stats.Body.String())
+	}
+
+	recovery := perform(server.Router, http.MethodPost, "/auth/recovery/request", `{"email":"alice@example.com"}`, "")
+	if recovery.Code != http.StatusOK {
+		t.Fatalf("recovery request failed: %d %s", recovery.Code, recovery.Body.String())
+	}
+	var recoveryPayload struct {
+		Token string `json:"token"`
+	}
+	if err := json.Unmarshal(recovery.Body.Bytes(), &recoveryPayload); err != nil || recoveryPayload.Token == "" {
+		t.Fatalf("decode recovery token: %v %s", err, recovery.Body.String())
+	}
+	reset := perform(server.Router, http.MethodPost, "/auth/recovery/reset", `{"token":"`+recoveryPayload.Token+`","new_password":"Password456"}`, "")
+	if reset.Code != http.StatusOK {
+		t.Fatalf("password reset failed: %d %s", reset.Code, reset.Body.String())
+	}
+	loginNewPassword := perform(server.Router, http.MethodPost, "/auth/login", `{"username":"alice_reader","password":"Password456"}`, "")
+	if loginNewPassword.Code != http.StatusOK {
+		t.Fatalf("login after reset failed: %d %s", loginNewPassword.Code, loginNewPassword.Body.String())
+	}
+}
+
 func TestAdminRoleCanMutateWithoutSharedToken(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	db, err := database.Open(filepath.Join(t.TempDir(), "mangahub.db"))
@@ -308,6 +394,36 @@ func TestAdminRoutesRequireConfiguredToken(t *testing.T) {
 	}
 	if !strings.Contains(resp.Body.String(), "admin role") || !strings.Contains(resp.Body.String(), "ADMIN_SYNC_TOKEN") {
 		t.Fatalf("admin route should explain required role/token: %s", resp.Body.String())
+	}
+}
+
+func TestCORSAllowsLocalhostAndLoopbackOrigins(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	db, err := database.Open(filepath.Join(t.TempDir(), "mangahub.db"))
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	defer db.Close()
+	if err := database.Migrate(db); err != nil {
+		t.Fatalf("migrate database: %v", err)
+	}
+	server := NewServerWithConfig(db, auth.NewJWTManager("test-secret"), Config{AllowedOrigin: "http://localhost:3000"})
+
+	req := httptest.NewRequest(http.MethodOptions, "/users/me", nil)
+	req.Header.Set("Origin", "http://127.0.0.1:3000")
+	req.Header.Set("Access-Control-Request-Method", "GET")
+	req.Header.Set("Access-Control-Request-Headers", "Authorization")
+	recorder := httptest.NewRecorder()
+	server.Router.ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusNoContent {
+		t.Fatalf("preflight status = %d, body = %s", recorder.Code, recorder.Body.String())
+	}
+	if got := recorder.Header().Get("Access-Control-Allow-Origin"); got != "http://127.0.0.1:3000" {
+		t.Fatalf("allow origin = %q, want loopback origin", got)
+	}
+	if got := recorder.Header().Get("Vary"); got != "Origin" {
+		t.Fatalf("vary = %q, want Origin", got)
 	}
 }
 
@@ -471,8 +587,14 @@ func TestMangaDexMappingAndStatusNormalization(t *testing.T) {
 	if manga.ID != "mangadex-304ceac3-8cdb-4fe7-acf7-2b6ff7a60613" || manga.SourceProvider != "MangaDex API" || manga.RightsStatus != "metadata-only" {
 		t.Fatalf("unexpected MangaDex mapping: %#v", manga)
 	}
-	if manga.TotalChapters != 139 || manga.Author != "Isayama Hajime" || !strings.Contains(manga.CoverURL, "/covers/304ceac3-8cdb-4fe7-acf7-2b6ff7a60613/") {
+	if manga.TotalChapters != 139 || manga.Author != "Isayama Hajime" || !strings.Contains(manga.CoverURL, "/covers/304ceac3-8cdb-4fe7-acf7-2b6ff7a60613/") || !strings.HasSuffix(manga.CoverURL, ".jpg.512.jpg") {
 		t.Fatalf("unexpected MangaDex metadata: %#v", manga)
+	}
+	if !isMangaDexCoverURLForID(manga.CoverURL, "304ceac3-8cdb-4fe7-acf7-2b6ff7a60613") {
+		t.Fatalf("expected MangaDex cover URL to validate: %s", manga.CoverURL)
+	}
+	if isMangaDexCoverURLForID("https://uploads.mangadex.org/data/hash/page.png", "304ceac3-8cdb-4fe7-acf7-2b6ff7a60613") {
+		t.Fatal("expected MangaDex chapter image URL to be rejected as a cover")
 	}
 	if extractMangaDexMangaID(manga.SourceURL) != "304ceac3-8cdb-4fe7-acf7-2b6ff7a60613" {
 		t.Fatalf("failed to extract MangaDex source id from %s", manga.SourceURL)
@@ -502,6 +624,33 @@ func TestAniListStatusValidationRejectsBadStatusWithoutNetwork(t *testing.T) {
 	if sync.Code != http.StatusBadRequest || !strings.Contains(sync.Body.String(), "bad-status") {
 		t.Fatalf("expected bad sync status to return 400, got %d %s", sync.Code, sync.Body.String())
 	}
+}
+
+func registerAndLogin(t *testing.T, router http.Handler, username, email string) (string, string) {
+	t.Helper()
+	register := perform(router, http.MethodPost, "/auth/register", `{"username":"`+username+`","email":"`+email+`","password":"Password123"}`, "")
+	if register.Code != http.StatusCreated {
+		t.Fatalf("register %s failed: %d %s", username, register.Code, register.Body.String())
+	}
+	var registerPayload struct {
+		User struct {
+			ID string `json:"id"`
+		} `json:"user"`
+	}
+	if err := json.Unmarshal(register.Body.Bytes(), &registerPayload); err != nil {
+		t.Fatalf("decode register: %v", err)
+	}
+	login := perform(router, http.MethodPost, "/auth/login", `{"username":"`+username+`","password":"Password123"}`, "")
+	if login.Code != http.StatusOK {
+		t.Fatalf("login %s failed: %d %s", username, login.Code, login.Body.String())
+	}
+	var loginPayload struct {
+		Token string `json:"token"`
+	}
+	if err := json.Unmarshal(login.Body.Bytes(), &loginPayload); err != nil || loginPayload.Token == "" {
+		t.Fatalf("decode login: %v %s", err, login.Body.String())
+	}
+	return registerPayload.User.ID, loginPayload.Token
 }
 
 func perform(router http.Handler, method, path, body, token string) *httptest.ResponseRecorder {

@@ -23,17 +23,18 @@ import (
 )
 
 type mangaMutationRequest struct {
-	ID             *string   `json:"id"`
-	Title          *string   `json:"title"`
-	Author         *string   `json:"author"`
-	Genres         *[]string `json:"genres"`
-	Status         *string   `json:"status"`
-	TotalChapters  *int      `json:"total_chapters"`
-	Description    *string   `json:"description"`
-	CoverURL       *string   `json:"cover_url"`
-	SourceProvider *string   `json:"source_provider"`
-	SourceURL      *string   `json:"source_url"`
-	RightsStatus   *string   `json:"rights_status"`
+	ID              *string   `json:"id"`
+	Title           *string   `json:"title"`
+	Author          *string   `json:"author"`
+	Genres          *[]string `json:"genres"`
+	Status          *string   `json:"status"`
+	TotalChapters   *int      `json:"total_chapters"`
+	Description     *string   `json:"description"`
+	CoverURL        *string   `json:"cover_url"`
+	SourceProvider  *string   `json:"source_provider"`
+	SourceURL       *string   `json:"source_url"`
+	RightsStatus    *string   `json:"rights_status"`
+	PublicationYear *int      `json:"publication_year"`
 }
 
 type chapterMutationRequest struct {
@@ -68,17 +69,18 @@ func (s *Server) createManga(c *gin.Context) {
 	}
 
 	manga := models.Manga{
-		ID:             mangaID,
-		Title:          title,
-		Author:         firstNonEmpty(stringFromPtr(req.Author), "Unknown"),
-		Genres:         normalizeGenres(sliceFromPtr(req.Genres)),
-		Status:         firstNonEmpty(stringFromPtr(req.Status), "ongoing"),
-		TotalChapters:  intFromPtr(req.TotalChapters),
-		Description:    stringFromPtr(req.Description),
-		CoverURL:       models.SanitizeCoverURL(stringFromPtr(req.CoverURL)),
-		SourceProvider: firstNonEmpty(stringFromPtr(req.SourceProvider), "MangaHub admin"),
-		SourceURL:      stringFromPtr(req.SourceURL),
-		RightsStatus:   firstNonEmpty(stringFromPtr(req.RightsStatus), "admin-managed"),
+		ID:              mangaID,
+		Title:           title,
+		Author:          firstNonEmpty(stringFromPtr(req.Author), "Unknown"),
+		Genres:          normalizeGenres(sliceFromPtr(req.Genres)),
+		Status:          firstNonEmpty(stringFromPtr(req.Status), "ongoing"),
+		TotalChapters:   intFromPtr(req.TotalChapters),
+		Description:     stringFromPtr(req.Description),
+		CoverURL:        models.SanitizeCoverURL(stringFromPtr(req.CoverURL)),
+		SourceProvider:  firstNonEmpty(stringFromPtr(req.SourceProvider), "MangaHub admin"),
+		SourceURL:       stringFromPtr(req.SourceURL),
+		RightsStatus:    firstNonEmpty(stringFromPtr(req.RightsStatus), "admin-managed"),
+		PublicationYear: intFromPtr(req.PublicationYear),
 	}
 	if err := validateMangaMutation(manga); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -91,9 +93,9 @@ func (s *Server) createManga(c *gin.Context) {
 		return
 	}
 	_, err = s.DB.Exec(`
-INSERT INTO manga (id, title, author, genres, status, total_chapters, description, cover_url, source_provider, source_url, rights_status)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		manga.ID, manga.Title, manga.Author, string(genres), manga.Status, manga.TotalChapters, manga.Description, manga.CoverURL, manga.SourceProvider, manga.SourceURL, manga.RightsStatus)
+INSERT INTO manga (id, title, author, genres, status, total_chapters, description, cover_url, source_provider, source_url, rights_status, publication_year)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		manga.ID, manga.Title, manga.Author, string(genres), manga.Status, manga.TotalChapters, manga.Description, manga.CoverURL, manga.SourceProvider, manga.SourceURL, manga.RightsStatus, manga.PublicationYear)
 	if err != nil {
 		c.JSON(http.StatusConflict, gin.H{"error": "manga already exists or could not be created"})
 		return
@@ -132,10 +134,10 @@ func (s *Server) updateManga(c *gin.Context) {
 	_, err = s.DB.Exec(`
 UPDATE manga
 SET title = ?, author = ?, genres = ?, status = ?, total_chapters = ?, description = ?,
-    cover_url = ?, source_provider = ?, source_url = ?, rights_status = ?
+	    cover_url = ?, source_provider = ?, source_url = ?, rights_status = ?, publication_year = ?
 WHERE id = ?`,
 		manga.Title, manga.Author, string(genres), manga.Status, manga.TotalChapters, manga.Description,
-		manga.CoverURL, manga.SourceProvider, manga.SourceURL, manga.RightsStatus, manga.ID)
+		manga.CoverURL, manga.SourceProvider, manga.SourceURL, manga.RightsStatus, manga.PublicationYear, manga.ID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update manga"})
 		return
@@ -332,7 +334,7 @@ func (s *Server) deleteLibrary(c *gin.Context) {
 
 func (s *Server) findManga(id string) (models.Manga, error) {
 	row := s.DB.QueryRow(`
-SELECT id, title, author, genres, status, total_chapters, description, cover_url, source_provider, source_url, rights_status
+SELECT id, title, author, genres, status, total_chapters, description, cover_url, source_provider, source_url, rights_status, publication_year
 FROM manga WHERE id = ?`, id)
 	return scanManga(row)
 }
@@ -526,6 +528,9 @@ func applyMangaMutation(manga *models.Manga, req mangaMutationRequest) {
 	if req.RightsStatus != nil {
 		manga.RightsStatus = strings.TrimSpace(*req.RightsStatus)
 	}
+	if req.PublicationYear != nil {
+		manga.PublicationYear = *req.PublicationYear
+	}
 }
 
 func validateMangaMutation(manga models.Manga) error {
@@ -540,6 +545,9 @@ func validateMangaMutation(manga models.Manga) error {
 	}
 	if manga.TotalChapters < 0 {
 		return errors.New("total_chapters cannot be negative")
+	}
+	if manga.PublicationYear < 0 {
+		return errors.New("publication_year cannot be negative")
 	}
 	return nil
 }

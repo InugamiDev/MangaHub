@@ -71,6 +71,7 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
       </button>
       {message ? <p className="auth-message">{message}</p> : null}
       {mode === "login" ? <Link href="/register">Create an account</Link> : <Link href="/login">Already have an account?</Link>}
+      {mode === "login" ? <Link href="/recover">Forgot password?</Link> : null}
       <Link href="/app">Open API console</Link>
     </section>
   );

@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { API_BASE, apiFetch, type LibraryEntry, type Manga } from "@/lib/api";
 import { hasAdminCredentials, readAdminCredentials } from "@/components/admin/AdminTokenField";
+import { safeImageURL } from "@/lib/catalogData";
 
 type AuthState = {
   token: string;
@@ -415,13 +416,17 @@ export default function AppPage() {
 
   const serviceEntries = Object.entries(health?.services ?? {});
   const featuredResult = results.find((manga) => manga.cover_url) ?? results[0];
-  const parallaxCovers = results.filter((manga) => manga.cover_url).slice(0, 10);
+  const featuredCoverURL = safeImageURL(featuredResult?.cover_url);
+  const parallaxCovers = results
+    .map((manga) => ({ manga, coverURL: safeImageURL(manga.cover_url) }))
+    .filter((item) => item.coverURL)
+    .slice(0, 10);
 
   return (
     <main className="app-wrap ops-console">
       <div className="ops-image-parallax" aria-hidden="true">
-        {parallaxCovers.map((manga, index) => (
-          <img src={manga.cover_url} alt="" key={`${manga.id}-${index}`} />
+        {parallaxCovers.map(({ manga, coverURL }, index) => (
+          <img src={coverURL} alt="" key={`${manga.id}-${index}`} />
         ))}
       </div>
       <div className="shell">
@@ -509,7 +514,7 @@ export default function AppPage() {
             </div>
 
             <section className="ops-hero-card">
-              {featuredResult?.cover_url ? <img src={featuredResult.cover_url} alt="" /> : null}
+              {featuredCoverURL ? <img src={featuredCoverURL} alt="" /> : null}
               <div>
                 <span className="eyebrow"><BookOpen size={14} /> Catalog bridge</span>
                 <h2>{featuredResult?.title ?? "Search the catalog"}</h2>
@@ -578,19 +583,22 @@ export default function AppPage() {
               </div>
 
               <div className="ops-result-grid">
-                {results.map((manga) => (
-                  <article className="ops-manga-card" key={manga.id}>
-                    {manga.cover_url ? <img src={manga.cover_url} alt="" /> : <span className="cover-tile">{manga.title.slice(0, 1)}</span>}
-                    <div>
-                      <strong>{manga.title}</strong>
-                      <span>{manga.author}</span>
-                      <small>{manga.genres.slice(0, 3).join(", ")}</small>
-                    </div>
-                    <button className="icon-button" type="button" aria-label={`Add ${manga.title}`} onClick={() => addToLibrary(manga)}>
-                      <Plus size={18} />
-                    </button>
-                  </article>
-                ))}
+                {results.map((manga) => {
+                  const coverURL = safeImageURL(manga.cover_url);
+                  return (
+                    <article className="ops-manga-card" key={manga.id}>
+                      {coverURL ? <img src={coverURL} alt="" /> : <span className="cover-tile">{manga.title.slice(0, 1)}</span>}
+                      <div>
+                        <strong>{manga.title}</strong>
+                        <span>{manga.author}</span>
+                        <small>{manga.genres.slice(0, 3).join(", ")}</small>
+                      </div>
+                      <button className="icon-button" type="button" aria-label={`Add ${manga.title}`} onClick={() => addToLibrary(manga)}>
+                        <Plus size={18} />
+                      </button>
+                    </article>
+                  );
+                })}
               </div>
             </section>
 
@@ -609,19 +617,22 @@ export default function AppPage() {
                     <span>Add manga from the search results to populate this API-backed list.</span>
                   </div>
                 ) : (
-                  library.map((entry) => (
-                    <div className="manga-row" key={entry.manga_id}>
-                      {entry.cover_url ? <img className="row-cover" src={entry.cover_url} alt="" /> : <span className="cover-tile">{entry.title.slice(0, 1)}</span>}
-                      <span>
-                        <strong>{entry.title}</strong>
-                        <br />
-                        <span className="muted">Chapter {entry.current_chapter}/{entry.total_chapters} · {entry.reading_status}</span>
-                      </span>
-                      <button className="icon-button" type="button" aria-label={`Update ${entry.title}`} onClick={() => updateProgress(entry)}>
-                        <RefreshCcw size={18} />
-                      </button>
-                    </div>
-                  ))
+                  library.map((entry) => {
+                    const coverURL = safeImageURL(entry.cover_url);
+                    return (
+                      <div className="manga-row" key={entry.manga_id}>
+                        {coverURL ? <img className="row-cover" src={coverURL} alt="" /> : <span className="cover-tile">{entry.title.slice(0, 1)}</span>}
+                        <span>
+                          <strong>{entry.title}</strong>
+                          <br />
+                          <span className="muted">Chapter {entry.current_chapter}/{entry.total_chapters} · {entry.reading_status}</span>
+                        </span>
+                        <button className="icon-button" type="button" aria-label={`Update ${entry.title}`} onClick={() => updateProgress(entry)}>
+                          <RefreshCcw size={18} />
+                        </button>
+                      </div>
+                    );
+                  })
                 )}
               </div>
             </section>

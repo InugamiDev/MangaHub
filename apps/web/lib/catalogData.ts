@@ -232,7 +232,22 @@ export function safeImageURL(value?: string) {
   const trimmed = value?.trim() ?? "";
   if (!trimmed) return "";
   const absolute = trimmed.startsWith("/") && !trimmed.startsWith("//") ? `${API_BASE.replace(/\/$/, "")}${trimmed}` : trimmed;
-  return validImageURL(absolute) ? absolute : "";
+  const proxied = proxyMangaDexCoverURL(absolute);
+  return validImageURL(proxied) ? proxied : "";
+}
+
+function proxyMangaDexCoverURL(value: string) {
+  try {
+    const url = new URL(value);
+    const match = url.pathname.match(/^\/covers\/([0-9a-f-]{36})\/([^/]+)$/i);
+    if (url.hostname === "uploads.mangadex.org" && match) {
+      const fileName = /\.(256|512)\.jpg$/i.test(match[2]) ? match[2] : `${match[2]}.512.jpg`;
+      return `${API_BASE.replace(/\/$/, "")}/sources/mangadex/cover/${match[1]}/${encodeURIComponent(fileName)}`;
+    }
+  } catch {
+    return value;
+  }
+  return value;
 }
 
 export function validImageURL(value?: string) {

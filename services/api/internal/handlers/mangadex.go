@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"hash/fnv"
+	"io"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -15,12 +16,16 @@ import (
 
 	"mangahub/services/api/internal/database"
 	"mangahub/services/api/internal/models"
+
+	"github.com/gin-gonic/gin"
 )
 
 const (
 	mangaDexAPIBase     = "https://api.mangadex.org"
 	mangaDexCoverCDN    = "https://uploads.mangadex.org/covers"
 	mangaDexTitleOrigin = "https://mangadex.org/title"
+	maxMangaDexCover    = 12 << 20
+	mangaDexCoverThumb  = 512
 )
 
 var mangaDexCache sync.Map
@@ -170,6 +175,51 @@ func getMangaDexJSON(rawURL string, target any) error {
 	return json.NewDecoder(resp.Body).Decode(target)
 }
 
+func (s *Server) proxyMangaDexCover(c *gin.Context) {
+	mangaID := strings.TrimSpace(c.Param("mangaID"))
+	fileName, err := url.PathUnescape(strings.TrimSpace(c.Param("fileName")))
+	if err != nil || !validMangaDexID(mangaID) || !validMangaDexCoverFileName(fileName) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "valid MangaDex cover path is required"})
+		return
+	}
+	remoteURL := mangaDexCoverCDN + "/" + mangaID + "/" + url.PathEscape(fileName)
+	req, err := http.NewRequestWithContext(c.Request.Context(), http.MethodGet, remoteURL, nil)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create cover request"})
+		return
+	}
+	req.Header.Set("Accept", "image/avif,image/webp,image/apng,image/*,*/*;q=0.8")
+	req.Header.Set("User-Agent", "MangaHub/1.0 metadata cover proxy")
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "failed to load MangaDex cover"})
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "MangaDex cover lookup failed"})
+		return
+	}
+	contentType := strings.TrimSpace(strings.Split(resp.Header.Get("Content-Type"), ";")[0])
+	if contentType == "" || !strings.HasPrefix(contentType, "image/") {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "MangaDex cover response is not an image"})
+		return
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxMangaDexCover+1))
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "failed to read MangaDex cover"})
+		return
+	}
+	if len(body) > maxMangaDexCover {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "MangaDex cover exceeds size limit"})
+		return
+	}
+	c.Header("Cache-Control", "public, max-age=86400")
+	c.Data(http.StatusOK, contentType, body)
+}
+
 func SyncMangaDexCatalog(db *database.Store, search string, statuses []string, limit int) (map[string]int, int, error) {
 	return syncMangaDexCatalog(db, search, statuses, limit)
 }
@@ -230,20 +280,21 @@ func mapMangaDexEntity(item mangaDexEntity) models.Manga {
 	coverURL := mangaDexCoverURL(item.ID, firstMangaDexCoverFile(item.Relationships))
 	sourceURL := mangaDexTitleOrigin + "/" + item.ID
 	return models.Manga{
-		ID:             "mangadex-" + item.ID,
-		Title:          title,
-		Author:         author,
-		Genres:         genres,
-		Status:         normalizeMangaDexStatus(item.Attributes.Status),
-		TotalChapters:  chapterCount,
-		Description:    cleanSourceDescription(localizedMangaDexText(item.Attributes.Description, "")),
-		CoverURL:       coverURL,
-		CoverLargeURL:  coverURL,
-		SourceProvider: "MangaDex API",
-		SourceURL:      sourceURL,
-		RightsStatus:   "metadata-only",
-		Format:         "manga",
-		Tags:           tags,
+		ID:              "mangadex-" + item.ID,
+		Title:           title,
+		Author:          author,
+		Genres:          genres,
+		Status:          normalizeMangaDexStatus(item.Attributes.Status),
+		TotalChapters:   chapterCount,
+		Description:     cleanSourceDescription(localizedMangaDexText(item.Attributes.Description, "")),
+		CoverURL:        coverURL,
+		CoverLargeURL:   coverURL,
+		SourceProvider:  "MangaDex API",
+		SourceURL:       sourceURL,
+		RightsStatus:    "metadata-only",
+		PublicationYear: item.Attributes.Year,
+		Format:          "manga",
+		Tags:            tags,
 		ExternalLinks: []models.MangaExternalLink{
 			{
 				ID:   stableMangaDexInt(item.ID),
@@ -324,10 +375,53 @@ func firstMangaDexCoverFile(relationships []mangaDexRelationship) string {
 }
 
 func mangaDexCoverURL(mangaID, fileName string) string {
-	if !validMangaDexID(mangaID) || strings.TrimSpace(fileName) == "" {
+	fileName = strings.TrimSpace(fileName)
+	if !validMangaDexID(mangaID) || !validMangaDexCoverFileName(fileName) {
 		return ""
 	}
-	return models.SanitizeCoverURL(mangaDexCoverCDN + "/" + mangaID + "/" + strings.TrimSpace(fileName))
+	if !regexp.MustCompile(`(?i)\.(256|512)\.jpg$`).MatchString(fileName) {
+		fileName = fmt.Sprintf("%s.%d.jpg", fileName, mangaDexCoverThumb)
+	}
+	return models.SanitizeCoverURL(mangaDexCoverCDN + "/" + strings.ToLower(mangaID) + "/" + fileName)
+}
+
+func validMangaDexCoverFileName(fileName string) bool {
+	if fileName == "" || len(fileName) > 220 || strings.ContainsAny(fileName, `/\`) {
+		return false
+	}
+	return regexp.MustCompile(`(?i)^[a-z0-9][a-z0-9._-]+\.(jpg|jpeg|png|gif|webp)$`).MatchString(fileName)
+}
+
+func isMangaDexCoverURLForID(value, mangaID string) bool {
+	if !validMangaDexID(mangaID) {
+		return false
+	}
+	parsed, err := url.Parse(strings.TrimSpace(value))
+	if err != nil || parsed.Scheme != "https" || !strings.EqualFold(parsed.Host, "uploads.mangadex.org") {
+		return false
+	}
+	prefix := "/covers/" + strings.ToLower(mangaID) + "/"
+	path := strings.ToLower(parsed.Path)
+	if !strings.HasPrefix(path, prefix) {
+		return false
+	}
+	return validMangaDexCoverFileName(parsed.Path[len(prefix):])
+}
+
+func normalizeMangaDexCoverURLForID(value, mangaID string) string {
+	if !validMangaDexID(mangaID) {
+		return ""
+	}
+	parsed, err := url.Parse(strings.TrimSpace(value))
+	if err != nil || parsed.Scheme != "https" || !strings.EqualFold(parsed.Host, "uploads.mangadex.org") {
+		return ""
+	}
+	prefix := "/covers/" + strings.ToLower(mangaID) + "/"
+	path := strings.ToLower(parsed.Path)
+	if !strings.HasPrefix(path, prefix) {
+		return ""
+	}
+	return mangaDexCoverURL(mangaID, parsed.Path[len(prefix):])
 }
 
 func mapMangaDexTags(values []mangaDexTagContainer) ([]string, []models.MangaTag) {

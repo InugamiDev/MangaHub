@@ -19,6 +19,9 @@ type Manga struct {
 	SourceProvider  string                `json:"source_provider"`
 	SourceURL       string                `json:"source_url"`
 	RightsStatus    string                `json:"rights_status"`
+	PublicationYear int                   `json:"publication_year,omitempty"`
+	AverageRating   float64               `json:"average_rating,omitempty"`
+	ReviewCount     int                   `json:"review_count,omitempty"`
 	CoverLargeURL   string                `json:"cover_large_url,omitempty"`
 	BannerURL       string                `json:"banner_url,omitempty"`
 	StartDate       string                `json:"start_date,omitempty"`
@@ -156,6 +159,71 @@ type ChatMessage struct {
 	Username  string `json:"username"`
 	Message   string `json:"message"`
 	Timestamp int64  `json:"timestamp"`
+}
+
+type Review struct {
+	ID        string    `json:"id"`
+	MangaID   string    `json:"manga_id"`
+	UserID    string    `json:"user_id"`
+	Username  string    `json:"username"`
+	Rating    int       `json:"rating"`
+	Body      string    `json:"body"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type ReviewSummary struct {
+	AverageRating float64 `json:"average_rating"`
+	ReviewCount   int     `json:"review_count"`
+}
+
+type FriendConnection struct {
+	UserID    string    `json:"user_id"`
+	Username  string    `json:"username"`
+	Email     string    `json:"email,omitempty"`
+	Status    string    `json:"status"`
+	Direction string    `json:"direction"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type ActivityEvent struct {
+	Type      string    `json:"type"`
+	UserID    string    `json:"user_id"`
+	Username  string    `json:"username"`
+	MangaID   string    `json:"manga_id"`
+	Title     string    `json:"title"`
+	Rating    int       `json:"rating,omitempty"`
+	Chapter   int       `json:"chapter,omitempty"`
+	Status    string    `json:"status,omitempty"`
+	Body      string    `json:"body,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+type GenreStat struct {
+	Genre string `json:"genre"`
+	Count int    `json:"count"`
+}
+
+type StatusStat struct {
+	Status string `json:"status"`
+	Count  int    `json:"count"`
+}
+
+type TrendPoint struct {
+	Date     string `json:"date"`
+	Chapters int    `json:"chapters"`
+}
+
+type UserStats struct {
+	LibraryCount      int          `json:"library_count"`
+	CompletedCount    int          `json:"completed_count"`
+	ReadingCount      int          `json:"reading_count"`
+	TotalChaptersRead int          `json:"total_chapters_read"`
+	AverageRating     float64      `json:"average_rating"`
+	ReviewCount       int          `json:"review_count"`
+	FavoriteGenres    []GenreStat  `json:"favorite_genres"`
+	StatusBreakdown   []StatusStat `json:"status_breakdown"`
+	Trends            []TrendPoint `json:"trends"`
 }
 
 func SanitizeCoverURL(value string) string {

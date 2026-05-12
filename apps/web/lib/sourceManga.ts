@@ -41,6 +41,8 @@ export type SourceManga = {
 
 export async function loadSourceManga(manga: CatalogManga): Promise<SourceManga | null> {
   const backend = await loadBackendManga(manga.slug);
+  if (backend && validImageURL(backend.coverUrl) && isLegalMetadataSource(backend)) return backend;
+
   const sourceUrl = backend?.sourceUrl || manga.sourceUrl;
   const exactMangaDexID = extractMangaDexMangaID(sourceUrl);
   if (exactMangaDexID) {
