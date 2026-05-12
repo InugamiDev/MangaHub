@@ -1,0 +1,65 @@
+syntax = "proto3";
+
+package mangahub;
+
+option go_package = "mangahub/services/api/proto;mangahubpb";
+
+service MangaService {
+  rpc GetManga(GetMangaRequest) returns (MangaResponse);
+  rpc SearchManga(SearchRequest) returns (SearchResponse);
+  rpc UpdateProgress(ProgressRequest) returns (ProgressResponse);
+}
+
+message GetMangaRequest {
+  string id = 1;
+}
+
+message Manga {
+  string id = 1;
+  string title = 2;
+  string author = 3;
+  repeated string genres = 4;
+  string status = 5;
+  int32 total_chapters = 6;
+  string description = 7;
+  string cover_url = 8;
+  string source_provider = 9;
+  string source_url = 10;
+  string rights_status = 11;
+}
+
+message MangaResponse {
+  Manga manga = 1;
+}
+
+message SearchRequest {
+  string query = 1;
+  string genre = 2;
+  string status = 3;
+  int32 limit = 4;
+}
+
+message SearchResponse {
+  repeated Manga results = 1;
+  int32 count = 2;
+}
+
+message ProgressRequest {
+  string token = 1;
+  string manga_id = 2;
+  int32 chapter = 3;
+  string status = 4;
+}
+
+message ProgressUpdate {
+  string user_id = 1;
+  string manga_id = 2;
+  int32 chapter = 3;
+  int64 timestamp = 4;
+}
+
+message ProgressResponse {
+  string status = 1;
+  int32 broadcast_count = 2;
+  ProgressUpdate progress = 3;
+}

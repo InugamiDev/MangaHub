@@ -1,0 +1,70 @@
+:global(.admin-table) .thumb {
+  display: block;
+  min-height: 0;
+  width: 46px;
+  border: 0;
+  background: transparent;
+  padding: 0;
+}
+
+.thumb :global(.real-cover),
+.thumb :global(.catalog-cover) {
+  width: 46px;
+  border-radius: 6px;
+  box-shadow: none;
+}
+
+:global(.admin-table) .titleCell {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+:global(.admin-table) .titleCell strong {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+  color: #fff;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+:global(.admin-table) .titleCell strong svg {
+  flex: 0 0 auto;
+}
+
+:global(.admin-table) .titleCell span {
+  display: block;
+  overflow: hidden;
+  color: #a8a8a1;
+  font-size: 12px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+:global(.admin-table) .mangaRow {
+  grid-template-columns: 46px minmax(0, 1fr) minmax(140px, 0.34fr) auto auto;
+}
+
+:global(.admin-table) .chapterRow {
+  grid-template-columns: minmax(0, 1fr) minmax(150px, 0.34fr) auto auto;
+}
+
+@media (max-width: 900px) {
+  :global(.admin-table) .mangaRow,
+  :global(.admin-table) .chapterRow {
+    grid-template-columns: 1fr;
+  }
+
+  :global(.admin-table) .thumb {
+    width: 72px;
+  }
+
+  .thumb :global(.real-cover),
+  .thumb :global(.catalog-cover) {
+    width: 72px;
+  }
+}

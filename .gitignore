@@ -1,0 +1,14 @@
+node_modules/
+.env
+.env.*
+!.env.example
+.next/
+out/
+dist/
+coverage/
+*.log
+.DS_Store
+services/api/mangahub.db
+services/api/*.db
+services/api/mangahub
+media/hero/renders/

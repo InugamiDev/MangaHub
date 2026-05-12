@@ -1,0 +1,663 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MangaHub Demonstration Slides</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0d0d0d;
+        --panel: rgba(24, 24, 24, 0.84);
+        --panel-strong: rgba(35, 35, 35, 0.94);
+        --text: #f6f2ea;
+        --muted: #b8b2a7;
+        --line: rgba(255, 255, 255, 0.14);
+        --red: #ff3b3b;
+        --gold: #f4c35b;
+        --green: #56d68a;
+        --blue: #65a7ff;
+        --shadow: 0 24px 80px rgba(0, 0, 0, 0.48);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+
+      body {
+        overflow: hidden;
+        background: var(--bg);
+        color: var(--text);
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+          "Segoe UI", sans-serif;
+      }
+
+      .cover-wall {
+        position: fixed;
+        inset: -12vh -8vw;
+        z-index: 0;
+        display: grid;
+        grid-template-columns: repeat(10, minmax(88px, 1fr));
+        gap: 14px;
+        transform: rotate(-8deg) scale(1.12);
+        opacity: 0.28;
+        filter: saturate(1.15) contrast(1.05);
+        animation: drift 34s linear infinite;
+      }
+
+      .cover-wall span {
+        min-height: 150px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 8px;
+        background:
+          linear-gradient(145deg, rgba(255, 59, 59, 0.82), rgba(9, 9, 9, 0.2)),
+          var(--image) center / cover;
+        box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
+      }
+
+      .veil {
+        position: fixed;
+        inset: 0;
+        z-index: 1;
+        background:
+          radial-gradient(circle at 18% 12%, rgba(255, 59, 59, 0.22), transparent 34%),
+          radial-gradient(circle at 86% 18%, rgba(244, 195, 91, 0.14), transparent 30%),
+          linear-gradient(90deg, rgba(5, 5, 5, 0.96), rgba(10, 10, 10, 0.82) 44%, rgba(5, 5, 5, 0.96));
+      }
+
+      main {
+        position: relative;
+        z-index: 2;
+        height: 100vh;
+        overflow: hidden;
+      }
+
+      .slide {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        align-content: center;
+        gap: 28px;
+        padding: clamp(28px, 6vw, 84px);
+        opacity: 0;
+        transform: translateX(4vw) scale(0.985);
+        pointer-events: none;
+        transition:
+          opacity 360ms ease,
+          transform 360ms ease;
+      }
+
+      .slide.active {
+        opacity: 1;
+        transform: translateX(0) scale(1);
+        pointer-events: auto;
+      }
+
+      .slide.previous {
+        transform: translateX(-4vw) scale(0.985);
+      }
+
+      .kicker {
+        display: inline-flex;
+        width: fit-content;
+        align-items: center;
+        gap: 10px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.08);
+        color: var(--gold);
+        padding: 8px 13px;
+        font-size: clamp(12px, 1.4vw, 15px);
+        font-weight: 850;
+        letter-spacing: 0;
+        text-transform: uppercase;
+      }
+
+      .kicker::before {
+        width: 9px;
+        height: 9px;
+        border-radius: 999px;
+        background: var(--red);
+        box-shadow: 0 0 18px var(--red);
+        content: "";
+      }
+
+      h1,
+      h2,
+      p {
+        max-width: 1120px;
+        margin: 0;
+      }
+
+      h1 {
+        font-size: clamp(48px, 9vw, 132px);
+        line-height: 0.88;
+        letter-spacing: 0;
+      }
+
+      h2 {
+        font-size: clamp(38px, 6.5vw, 86px);
+        line-height: 0.96;
+        letter-spacing: 0;
+      }
+
+      .lead {
+        color: var(--muted);
+        font-size: clamp(18px, 2.2vw, 29px);
+        line-height: 1.35;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 16px;
+      }
+
+      .grid.two {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .card,
+      .metric,
+      .terminal,
+      .diagram {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+        box-shadow: var(--shadow);
+        backdrop-filter: blur(14px);
+      }
+
+      .card {
+        min-height: 180px;
+        padding: 22px;
+      }
+
+      .card strong {
+        display: block;
+        margin-bottom: 9px;
+        font-size: clamp(19px, 2vw, 28px);
+      }
+
+      .card span,
+      .card li {
+        color: var(--muted);
+        font-size: clamp(15px, 1.5vw, 19px);
+        line-height: 1.45;
+      }
+
+      .card ul {
+        display: grid;
+        gap: 8px;
+        margin: 0;
+        padding-left: 18px;
+      }
+
+      .metrics {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 16px;
+      }
+
+      .metric {
+        padding: 22px;
+      }
+
+      .metric b {
+        display: block;
+        color: var(--gold);
+        font-size: clamp(34px, 5vw, 70px);
+        line-height: 0.95;
+      }
+
+      .metric span {
+        color: var(--muted);
+        font-size: clamp(13px, 1.5vw, 18px);
+      }
+
+      .terminal {
+        overflow: hidden;
+        background: rgba(9, 9, 9, 0.92);
+      }
+
+      .terminal header {
+        display: flex;
+        justify-content: space-between;
+        border-bottom: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.06);
+        padding: 12px 16px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      pre {
+        overflow: auto;
+        margin: 0;
+        padding: 20px;
+        color: #e8e2d8;
+        font-size: clamp(13px, 1.45vw, 18px);
+        line-height: 1.55;
+        white-space: pre-wrap;
+      }
+
+      .diagram {
+        display: grid;
+        grid-template-columns: 1fr auto 1fr auto 1fr;
+        align-items: center;
+        gap: 14px;
+        padding: 24px;
+      }
+
+      .node {
+        display: grid;
+        gap: 8px;
+        min-height: 128px;
+        align-content: center;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel-strong);
+        padding: 18px;
+      }
+
+      .node b {
+        color: var(--text);
+        font-size: clamp(18px, 2vw, 26px);
+      }
+
+      .node span {
+        color: var(--muted);
+        line-height: 1.35;
+      }
+
+      .arrow {
+        color: var(--red);
+        font-size: clamp(24px, 4vw, 52px);
+        font-weight: 900;
+      }
+
+      .demo-steps {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .step {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+        padding: 16px;
+      }
+
+      .step b {
+        display: block;
+        color: var(--red);
+        font-size: 28px;
+      }
+
+      .step span {
+        color: var(--muted);
+        line-height: 1.35;
+      }
+
+      .nav {
+        position: fixed;
+        right: 22px;
+        bottom: 22px;
+        z-index: 5;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: rgba(10, 10, 10, 0.76);
+        padding: 8px;
+        backdrop-filter: blur(16px);
+      }
+
+      .nav button {
+        width: 42px;
+        height: 42px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.08);
+        color: var(--text);
+        cursor: pointer;
+        font-size: 20px;
+        font-weight: 900;
+      }
+
+      .nav output {
+        min-width: 62px;
+        color: var(--muted);
+        text-align: center;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .progress {
+        position: fixed;
+        inset: auto 0 0;
+        z-index: 4;
+        height: 4px;
+        background: rgba(255, 255, 255, 0.08);
+      }
+
+      .progress span {
+        display: block;
+        width: 0;
+        height: 100%;
+        background: linear-gradient(90deg, var(--red), var(--gold));
+        transition: width 240ms ease;
+      }
+
+      .badge-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+
+      .badge {
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.07);
+        color: var(--muted);
+        padding: 9px 12px;
+        font-size: clamp(13px, 1.4vw, 16px);
+        font-weight: 760;
+      }
+
+      @keyframes drift {
+        from {
+          transform: rotate(-8deg) scale(1.12) translate3d(0, 0, 0);
+        }
+        to {
+          transform: rotate(-8deg) scale(1.12) translate3d(-10vw, 7vh, 0);
+        }
+      }
+
+      @media (max-width: 860px) {
+        body {
+          overflow: auto;
+        }
+
+        main {
+          height: auto;
+          overflow: visible;
+        }
+
+        .slide {
+          position: relative;
+          min-height: 100vh;
+          opacity: 1;
+          transform: none;
+          pointer-events: auto;
+        }
+
+        .grid,
+        .grid.two,
+        .metrics,
+        .demo-steps,
+        .diagram {
+          grid-template-columns: 1fr;
+        }
+
+        .arrow {
+          transform: rotate(90deg);
+          text-align: center;
+        }
+
+        .nav,
+        .progress {
+          display: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="cover-wall" aria-hidden="true">
+      <span style="--image: url('https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx53390-1RsuABC34P9D.jpg')"></span>
+      <span style="--image: url('https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx105778-euxXZEIfDY2u.png')"></span>
+      <span style="--image: url('https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx101517-H3TdM3g5ZUe9.jpg')"></span>
+      <span style="--image: url('https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx87216-c9bSNVD10UuD.png')"></span>
+      <span style="--image: url('https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx105398-b673Vt5ZSuz3.jpg')"></span>
+      <span style="--image: url('https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx85486-INqnYx8gL3eX.jpg')"></span>
+      <span style="--image: url('https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx87423-gPNtu8QbGped.jpg')"></span>
+      <span style="--image: url('https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx72451-vVXtRwyttjGG.png')"></span>
+      <span style="--image: url('https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx30012-1epmVfTSv2rr.png')"></span>
+      <span style="--image: url('https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx102988-OoVJxQCH6fbR.jpg')"></span>
+      <span style="--image: url('https://uploads.mangadex.org/covers/304ceac3-8cdb-4fe7-acf7-2b6ff7a60613/29f82b1d-b37f-455a-b630-e42bccb1422a.jpg')"></span>
+      <span style="--image: url('https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx97852-M7vlc2OGR2gp.jpg')"></span>
+      <span style="--image: url('https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx86123-Ill8uBdtvWrR.png')"></span>
+      <span style="--image: url('https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx120760-MtXvMgujLBpe.jpg')"></span>
+      <span style="--image: url('https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx87170-nyuwcN7rU4pc.jpg')"></span>
+      <span style="--image: url('https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx65243-mR4MnJFmfaOF.png')"></span>
+      <span style="--image: url('https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx30021-FE6kmrfpuKyb.jpg')"></span>
+      <span style="--image: url('https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx85135-11OOnyaqV71k.png')"></span>
+      <span style="--image: url('https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx97553-vqJj5DFS8v2p.jpg')"></span>
+      <span style="--image: url('https://s4.anilist.co/file/anilistcdn/media/manga/cover/large/bx146983-pLf4apCkFwKL.jpg')"></span>
+    </div>
+    <div class="veil" aria-hidden="true"></div>
+
+    <main id="deck">
+      <section class="slide active">
+        <span class="kicker">MangaHub demonstration</span>
+        <h1>Production Manga Platform</h1>
+        <p class="lead">
+          A full-stack manga reader, catalog, admin, source-sync, and protocol demo built with Next.js, Go, Neon Postgres, Cloudflare R2, AniList, and MangaDex.
+        </p>
+        <div class="badge-row">
+          <span class="badge">Web app</span>
+          <span class="badge">Go API</span>
+          <span class="badge">Role-based admin</span>
+          <span class="badge">R2 media storage</span>
+          <span class="badge">Live API console</span>
+        </div>
+      </section>
+
+      <section class="slide">
+        <span class="kicker">What it ships</span>
+        <h2>Reader, catalog, admin, and live operations in one application.</h2>
+        <div class="metrics">
+          <div class="metric"><b>300+</b><span>metadata-backed manga after source bootstrap</span></div>
+          <div class="metric"><b>5</b><span>network surfaces: HTTP, TCP, UDP, gRPC, WebSocket</span></div>
+          <div class="metric"><b>2</b><span>source adapters: AniList GraphQL and MangaDex REST</span></div>
+          <div class="metric"><b>1</b><span>storage path for owned or licensed media: R2/local adapter</span></div>
+        </div>
+      </section>
+
+      <section class="slide">
+        <span class="kicker">Public experience</span>
+        <h2>Pages built for actual manga discovery and reading.</h2>
+        <div class="grid">
+          <article class="card">
+            <strong>Landing</strong>
+            <span>Hero, trending catalog, latest updates, genre discovery, and source-backed cover visuals.</span>
+          </article>
+          <article class="card">
+            <strong>Library and Search</strong>
+            <span>Backend catalog search, genre/status filters, sort views, popular titles, and latest updates.</span>
+          </article>
+          <article class="card">
+            <strong>Reader</strong>
+            <span>Chapter selector, page rendering, next/previous navigation, and empty states when media is not uploaded.</span>
+          </article>
+        </div>
+      </section>
+
+      <section class="slide">
+        <span class="kicker">Backend architecture</span>
+        <h2>Source metadata and owned media stay separated until import is explicitly requested.</h2>
+        <div class="diagram">
+          <div class="node"><b>Source APIs</b><span>AniList GraphQL and MangaDex REST provide metadata, IDs, covers, and chapter references.</span></div>
+          <div class="arrow">></div>
+          <div class="node"><b>MangaHub API</b><span>Normalizes records, enforces auth/admin roles, syncs catalog rows, and imports licensed pages.</span></div>
+          <div class="arrow">></div>
+          <div class="node"><b>Neon + R2</b><span>Postgres stores manga/chapter records. R2 stores chapter images and imported licensed assets.</span></div>
+        </div>
+      </section>
+
+      <section class="slide">
+        <span class="kicker">Admin and auth</span>
+        <h2>Uploads and imports are gated by real user roles.</h2>
+        <div class="grid two">
+          <article class="card">
+            <strong>User roles</strong>
+            <ul>
+              <li>Users register/login with bcrypt and JWT.</li>
+              <li>JWTs include `role`.</li>
+              <li>`/users/me` exposes the current user and role.</li>
+              <li>`ADMIN_EMAILS` promotes configured accounts to admin.</li>
+            </ul>
+          </article>
+          <article class="card">
+            <strong>Admin operations</strong>
+            <ul>
+              <li>Create, edit, delete manga.</li>
+              <li>Create, upload, edit, delete chapters.</li>
+              <li>Sync AniList and MangaDex metadata.</li>
+              <li>Import licensed MangaDex media into R2/local storage.</li>
+            </ul>
+          </article>
+        </div>
+      </section>
+
+      <section class="slide">
+        <span class="kicker">MangaDex + R2</span>
+        <h2>Licensed import turns external chapter pages into MangaHub-owned storage URLs.</h2>
+        <div class="terminal">
+          <header><span>Admin API</span><span>R2/local storage adapter</span></header>
+          <pre>POST /admin/import/mangadex/:id
+Authorization: Bearer &lt;admin-jwt&gt;
+
+{
+  "language": "en",
+  "quality": "data-saver",
+  "limit": 3,
+  "rights_status": "licensed-import",
+  "import_cover": true
+}
+
+Result:
+- upserts MangaDex title into MangaHub catalog
+- fetches MangaDex@Home pages
+- writes images through ChapterStorage.SaveBytes
+- stores chapter page_urls as R2/local URLs</pre>
+        </div>
+      </section>
+
+      <section class="slide">
+        <span class="kicker">Protocol requirements</span>
+        <h2>Course protocol work is visible, but the product is not limited to course scaffolding.</h2>
+        <div class="grid">
+          <article class="card"><strong>HTTP REST</strong><span>Auth, manga, chapters, source adapters, library, progress, admin, notifications.</span></article>
+          <article class="card"><strong>TCP + UDP</strong><span>TCP progress broadcasts and UDP chapter release notifications.</span></article>
+          <article class="card"><strong>gRPC + WebSocket</strong><span>Unary manga/progress service and realtime chat transport.</span></article>
+        </div>
+      </section>
+
+      <section class="slide">
+        <span class="kicker">Live console</span>
+        <h2>`/app` is the demonstration control surface.</h2>
+        <div class="terminal">
+          <header><span>Browser CLI examples</span><span>http://127.0.0.1:3000/app</span></header>
+          <pre>health
+sources
+manga search titan
+source mangadex attack on titan
+source anilist solo leveling
+login admin_user Password123
+me
+sync mangadex ongoing hiatus
+library add anilist-53390
+progress anilist-53390 1</pre>
+        </div>
+      </section>
+
+      <section class="slide">
+        <span class="kicker">Demo flow</span>
+        <h2>Five-minute presentation path.</h2>
+        <div class="demo-steps">
+          <div class="step"><b>1</b><span>Open landing page and show catalog sections.</span></div>
+          <div class="step"><b>2</b><span>Search MangaDex/AniList metadata from `/app`.</span></div>
+          <div class="step"><b>3</b><span>Login as admin and show role in `/profile` or `/app`.</span></div>
+          <div class="step"><b>4</b><span>Open admin manga/chapter management.</span></div>
+          <div class="step"><b>5</b><span>Show reader page loading stored chapter URLs.</span></div>
+        </div>
+      </section>
+
+      <section class="slide">
+        <span class="kicker">Verification</span>
+        <h2>The app is tested at the API, build, and storage layers.</h2>
+        <div class="grid two">
+          <div class="terminal">
+            <header><span>Checks</span><span>local</span></header>
+            <pre>go test ./...
+npm run lint --workspace apps/web
+npm run build --workspace apps/web
+npm run api:storage-check</pre>
+          </div>
+          <article class="card">
+            <strong>Live endpoints</strong>
+            <ul>
+              <li>Web: `http://127.0.0.1:3000`</li>
+              <li>API: `http://localhost:8080`</li>
+              <li>Console: `http://127.0.0.1:3000/app`</li>
+              <li>Docs: `http://127.0.0.1:3000/docs`</li>
+            </ul>
+          </article>
+        </div>
+      </section>
+
+      <section class="slide">
+        <span class="kicker">Close</span>
+        <h2>MangaHub is now a real manga platform foundation.</h2>
+        <p class="lead">
+          The current build has public browsing, source-backed catalog growth, role-gated administration, R2 media storage, reader pages, API console metrics, documentation, and the network protocol layer required by the reference docs.
+        </p>
+      </section>
+    </main>
+
+    <nav class="nav" aria-label="Slide controls">
+      <button type="button" id="prev" aria-label="Previous slide">‹</button>
+      <output id="count">1 / 11</output>
+      <button type="button" id="next" aria-label="Next slide">›</button>
+    </nav>
+    <div class="progress" aria-hidden="true"><span id="progress"></span></div>
+
+    <script>
+      const slides = Array.from(document.querySelectorAll(".slide"));
+      const count = document.getElementById("count");
+      const progress = document.getElementById("progress");
+      let index = 0;
+
+      function show(nextIndex) {
+        index = Math.max(0, Math.min(slides.length - 1, nextIndex));
+        slides.forEach((slide, slideIndex) => {
+          slide.classList.toggle("active", slideIndex === index);
+          slide.classList.toggle("previous", slideIndex < index);
+        });
+        count.value = `${index + 1} / ${slides.length}`;
+        progress.style.width = `${((index + 1) / slides.length) * 100}%`;
+        history.replaceState(null, "", `#${index + 1}`);
+      }
+
+      document.getElementById("prev").addEventListener("click", () => show(index - 1));
+      document.getElementById("next").addEventListener("click", () => show(index + 1));
+      window.addEventListener("keydown", (event) => {
+        if (event.key === "ArrowRight" || event.key === " ") show(index + 1);
+        if (event.key === "ArrowLeft") show(index - 1);
+        if (event.key === "Home") show(0);
+        if (event.key === "End") show(slides.length - 1);
+      });
+
+      const requested = Number(location.hash.replace("#", ""));
+      show(Number.isFinite(requested) && requested > 0 ? requested - 1 : 0);
+    </script>
+  </body>
+</html>

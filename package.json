@@ -1,0 +1,19 @@
+{
+  "name": "mangahub-centric",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "apps/web"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace apps/web",
+    "build": "npm run build --workspace apps/web",
+    "lint": "npm run lint --workspace apps/web",
+    "api:dev": "cd services/api && go run ./cmd/server",
+    "api:migrate": "cd services/api && go run ./cmd/migrate",
+    "api:storage-check": "cd services/api && go run ./cmd/storage-check",
+    "api:console": "cd services/api && go run ./cmd/mangahub test console",
+    "api:test": "cd services/api && go test ./...",
+    "verify": "npm run build && (cd services/api && go test ./...)"
+  }
+}
